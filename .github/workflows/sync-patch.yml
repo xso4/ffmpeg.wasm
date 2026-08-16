@@ -1,0 +1,107 @@
+name: Sync and Patch Upstream
+
+on:
+  schedule:
+    - cron: '23 15 16 * *' # Run monthly
+  workflow_dispatch:
+
+jobs:
+  sync-and-patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.FFWASM_TOKEN }}
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add Upstream Remote
+        run: |
+          git remote add upstream https://github.com/ffmpegwasm/ffmpeg.wasm.git
+          git fetch upstream
+
+      - name: Check for updates
+        id: check_updates
+        run: |
+          UPSTREAM_HEAD=$(git rev-parse upstream/main)
+          echo "Upstream HEAD: $UPSTREAM_HEAD"
+          
+          # Find common ancestor
+          if ! MERGE_BASE=$(git merge-base HEAD upstream/main 2>/dev/null); then
+            echo "Warning: git merge-base failed. Assuming update required."
+            MERGE_BASE=""
+          fi
+          echo "Merge Base: ${MERGE_BASE:-N/A}"
+
+          # If merge-base is not equal to upstream head, it means upstream has moved forward 
+          # (or we are unrelated, which counts as update).
+          # If merge-base == upstream head, it means upstream is an ancestor of our HEAD 
+          # (so we already contain upstream's latest state + our patches).
+          
+          if [ -z "$MERGE_BASE" ] || [ "$MERGE_BASE" != "$UPSTREAM_HEAD" ]; then
+             echo "Update required."
+             echo "has_update=true" >> $GITHUB_OUTPUT
+          else
+             echo "No updates found in upstream."
+             echo "has_update=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Backup custom files
+        run: |
+          mkdir -p /tmp/myffwasm-backup
+          if [ -d .github ]; then
+            cp -r .github /tmp/myffwasm-backup/
+          fi
+          echo "Backup completed."
+
+      - name: Reset to upstream
+        run: |
+          git reset --hard upstream/main
+          git clean -fd
+
+      - name: Restore custom files
+        run: |
+          if [ -d /tmp/myffwasm-backup/.github ]; then
+             cp -rn /tmp/myffwasm-backup/.github .
+             echo "Restored custom files (skipped existing upstream files)."
+          else
+             echo "No backup found to restore."
+          fi
+
+      - name: Apply Patches
+        run: |
+          if [ -f .github/scripts/repo-patch.py ]; then
+            python3 .github/scripts/repo-patch.py .
+          else
+            echo "repo-patch.py not found, skipping patch."
+          fi
+          
+      - name: Commit and Push
+        run: |
+          git add .
+          if ! git diff --staged --quiet; then
+             git commit -m "Sync with upstream and apply patches"
+             git push -f origin main
+             echo "pushed=true" >> $GITHUB_OUTPUT
+          else
+             echo "No changes to commit."
+             echo "pushed=false" >> $GITHUB_OUTPUT
+          fi
+        id: commit_push
+
+      - name: Trigger Build Workflow
+        # if: steps.check_updates.outputs.has_update == 'true' || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.FFWASM_TOKEN }}
+        run: |
+          echo "Triggering build-upload.yml..."
+          gh workflow run build-upload.yml --ref main --repo ${{ github.repository }}

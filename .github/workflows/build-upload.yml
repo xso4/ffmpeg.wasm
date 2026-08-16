@@ -1,0 +1,45 @@
+name: Build and Upload
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-core:
+    name: Build ffmpeg-core
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+        # Removed repository: ffmpegwasm/ffmpeg.wasm to build from current (patched) repo
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ffmpeg-core
+        run: make prd
+
+      - name: Upload core artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-core
+          path: packages/core/dist/*
+
+  build-core-mt:
+    name: Build ffmpeg-core-mt
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+        # Removed repository: ffmpegwasm/ffmpeg.wasm to build from current (patched) repo
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ffmpeg-core-mt
+        run: make prd-mt
+
+      - name: Upload core-mt artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-core-mt
+          path: packages/core-mt/dist/*
