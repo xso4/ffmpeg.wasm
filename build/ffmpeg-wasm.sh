@@ -17,7 +17,7 @@ CONF_FLAGS=(
   -Llibavfilter 
   -Llibavformat 
   -Llibavutil 
-  -Llibpostproc 
+   
   -Llibswresample 
   -Llibswscale 
   -lavcodec 
@@ -25,7 +25,7 @@ CONF_FLAGS=(
   -lavfilter 
   -lavformat 
   -lavutil 
-  -lpostproc 
+   
   -lswresample 
   -lswscale 
   -Wno-deprecated-declarations 
